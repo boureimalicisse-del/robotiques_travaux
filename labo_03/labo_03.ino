@@ -15,6 +15,31 @@
 MeRGBLed led(PORT0, LEDNUM);
 MeUltrasonicSensor capteurDistance(PORT_10);
 
+MeEncoderOnBoard Encoder_1(SLOT1);
+MeEncoderOnBoard Encoder_2(SLOT2);
+
+const int VITESSE = 100;
+const float PERIMETRE_ROUE = 6.5 * PI;
+const float DISTANCE_X = 50.0;
+
+MeGyro gyro(0, 0x69);
+
+void isr_process_encoder1(void) {
+  if (digitalRead(Encoder_1.getPortB()) == 0) {
+    Encoder_1.pulsePosMinus();
+  } else {
+    Encoder_1.pulsePosPlus();
+  }
+}
+
+void isr_process_encoder2(void) {
+  if (digitalRead(Encoder_2.getPortB()) == 0) {
+    Encoder_2.pulsePosMinus();
+  } else {
+    Encoder_2.pulsePosPlus();
+  }
+}
+
 enum Etat {
   ATTENTE_DEPART,
   SEG_A,
@@ -31,12 +56,38 @@ Etat etat = ATTENTE_DEPART;
 unsigned long currentTime = 0;
 
 void setup() {
+  attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
+  attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
+
+  gyro.begin();
+
+  //Set PWM 8KHz
+  TCCR1A = _BV(WGM10);
+  TCCR1B = _BV(CS11) | _BV(WGM12);
+
+  TCCR2A = _BV(WGM21) | _BV(WGM20);
+  TCCR2B = _BV(CS21);
+
+  Encoder_1.setPulse(9);
+  Encoder_2.setPulse(9);
+  Encoder_1.setRatio(39.267);
+  Encoder_2.setRatio(39.267);
+  Encoder_1.setPosPid(1.8, 0, 1.2);
+  Encoder_2.setPosPid(1.8, 0, 1.2);
+  Encoder_1.setSpeedPid(0.18, 0, 0);
+  Encoder_2.setSpeedPid(0.18, 0, 0);
+
   Serial.begin(115200);
   led.setpin(LEDPIN);
 }
 
 void loop() {
   currentTime = millis();
+
+  Encoder_1.loop();
+  Encoder_2.loop();
+
+  gyro.update();
 
   switch (etat) {
     case ATTENTE_DEPART: gererAttenteDepart(); break;
@@ -74,17 +125,37 @@ void gererAttenteDepart() {
 
 void gererSegA() {
   static bool premiereFois = true;
+  static long positionDepart = 0;
+  static float angleDepart = 0;
 
   if (premiereFois) {
     premiereFois = false;
+
+    positionDepart = Encoder_1.getCurPos();
+    angleDepart = gyro.getAngleZ();
+
+    Encoder_1.setTarPWM(-VITESSE);
+    Encoder_2.setTarPWM(VITESSE);
+
     Serial.println("Etat : SEG_A");
   }
 
   //ACTION
 
-  bool transition = false;  //A changer
+  //transition
+  long degreParcourus;
+  float distanceParcourue;
+
+  degreParcourus = abs(Encoder_1.getCurPos() - positionDepart);
+  distanceParcourue = (degreParcourus / 360.0) * PERIMETRE_ROUE;
+
+
+  bool transition = distanceParcourue >= DISTANCE_X;
 
   if (transition) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+
     premiereFois = true;
     etat = PIVOT_1;
   }
@@ -174,7 +245,7 @@ void gererPivot3() {
   // ACTION
 
   // TRANSITION
-  bool transition = false;   // À FAIRE
+  bool transition = false;  // À FAIRE
 
   if (transition) {
     premiereFois = true;
