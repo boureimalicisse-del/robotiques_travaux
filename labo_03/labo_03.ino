@@ -18,9 +18,12 @@ MeUltrasonicSensor capteurDistance(PORT_10);
 MeEncoderOnBoard Encoder_1(SLOT1);
 MeEncoderOnBoard Encoder_2(SLOT2);
 
+const float KP = 3.0;  
+const float KD = 1.0;  
+
 const int VITESSE = 100;
 const float PERIMETRE_ROUE = 6.5 * PI;
-const float DISTANCE_X = 50.0;
+const float DISTANCE_X = 1000.0;//test temporaire
 
 MeGyro gyro(0, 0x69);
 
@@ -113,8 +116,6 @@ void gererAttenteDepart() {
     Serial.println("Etat : ATTENTE_DEPART");
   }
 
-  //action
-
   bool transition = (currentTime - tempsEntree >= DELAI_DEPART);
 
   if (transition) {
@@ -123,16 +124,20 @@ void gererAttenteDepart() {
   }
 }
 
+// Segment A : avance de DISTANCE_X cm en ligne droite (correction gyro)
 void gererSegA() {
-  static bool premiereFois = true;
-  static long positionDepart = 0;
-  static float angleDepart = 0;
+  static bool  premiereFois = true;
+  static long  positionDepart = 0;      
+  static float angleDepart = 0;         
+  static float erreurPrecedente = 0;    
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
 
     positionDepart = Encoder_1.getCurPos();
     angleDepart = gyro.getAngleZ();
+    erreurPrecedente = 0;
 
     Encoder_1.setTarPWM(-VITESSE);
     Encoder_2.setTarPWM(VITESSE);
@@ -140,17 +145,20 @@ void gererSegA() {
     Serial.println("Etat : SEG_A");
   }
 
-  //ACTION
+  //  ACTION : calcul de la correction gyro (PD)
+  float erreur = gyro.getAngleZ() - angleDepart;
+  float correction = KP * erreur + KD * (erreur - erreurPrecedente);
+  erreurPrecedente = erreur;
 
-  //transition
-  long degreParcourus;
-  float distanceParcourue;
+  Serial.println(correction);
+  Encoder_1.setTarPWM(-VITESSE - correction);
+  Encoder_2.setTarPWM( VITESSE - correction);  
 
-  degreParcourus = abs(Encoder_1.getCurPos() - positionDepart);
-  distanceParcourue = (degreParcourus / 360.0) * PERIMETRE_ROUE;
+  //TRANSITION
+  long  degresParcourus   = abs(Encoder_1.getCurPos() - positionDepart);
+  float distanceParcourue = (degresParcourus / 360.0) * PERIMETRE_ROUE;
 
-
-  bool transition = distanceParcourue >= DISTANCE_X;
+  bool transition = (distanceParcourue >= DISTANCE_X);
 
   if (transition) {
     Encoder_1.setTarPWM(0);
