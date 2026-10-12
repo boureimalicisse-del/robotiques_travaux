@@ -18,12 +18,12 @@ MeUltrasonicSensor capteurDistance(PORT_10);
 MeEncoderOnBoard Encoder_1(SLOT1);
 MeEncoderOnBoard Encoder_2(SLOT2);
 
-const float KP = 3.0;  
-const float KD = 1.0;  
+const float KP = 3.0;
+const float KD = 1.0;
 
 const int VITESSE = 100;
 const float PERIMETRE_ROUE = 6.5 * PI;
-const float DISTANCE_X = 1000.0;//test temporaire
+const float DISTANCE_X = 50.0;
 
 MeGyro gyro(0, 0x69);
 
@@ -104,6 +104,17 @@ void loop() {
   }
 }
 
+void afficherProgression(int nbreLed) {
+  for (int i = 1; i <= 7; i++) {
+    if (i <= nbreLed) {
+      led.setColor(i, 0, 0, 20);
+    } else {
+      led.setColor(i, 0, 0, 0);
+    }
+  }
+  led.show();
+}
+
 
 void gererAttenteDepart() {
   static bool premiereFois = true;
@@ -126,10 +137,10 @@ void gererAttenteDepart() {
 
 // Segment A : avance de DISTANCE_X cm en ligne droite (correction gyro)
 void gererSegA() {
-  static bool  premiereFois = true;
-  static long  positionDepart = 0;      
-  static float angleDepart = 0;         
-  static float erreurPrecedente = 0;    
+  static bool premiereFois = true;
+  static long positionDepart = 0;
+  static float angleDepart = 0;
+  static float erreurPrecedente = 0;
 
   //ENTRÉE
   if (premiereFois) {
@@ -146,23 +157,36 @@ void gererSegA() {
   }
 
   //  ACTION : calcul de la correction gyro (PD)
+  long degresParcourus = abs(Encoder_1.getCurPos() - positionDepart);
+  float distanceParcourue = (degresParcourus / 360.0) * PERIMETRE_ROUE;
+  int nbreLedAllume = 0;
+
   float erreur = gyro.getAngleZ() - angleDepart;
   float correction = KP * erreur + KD * (erreur - erreurPrecedente);
   erreurPrecedente = erreur;
 
   Serial.println(correction);
   Encoder_1.setTarPWM(-VITESSE - correction);
-  Encoder_2.setTarPWM( VITESSE - correction);  
+  Encoder_2.setTarPWM(VITESSE - correction);
+
+  nbreLedAllume = map(distanceParcourue, 0, DISTANCE_X, 0, 7);
+  nbreLedAllume = constrain(nbreLedAllume, 0, 7);
+
+  afficherProgression(nbreLedAllume);
+
+  led.setColor(12, 0, 20, 0);
+  led.show();
+
 
   //TRANSITION
-  long  degresParcourus   = abs(Encoder_1.getCurPos() - positionDepart);
-  float distanceParcourue = (degresParcourus / 360.0) * PERIMETRE_ROUE;
 
   bool transition = (distanceParcourue >= DISTANCE_X);
 
   if (transition) {
     Encoder_1.setTarPWM(0);
     Encoder_2.setTarPWM(0);
+
+    afficherProgression(0);
 
     premiereFois = true;
     etat = PIVOT_1;
