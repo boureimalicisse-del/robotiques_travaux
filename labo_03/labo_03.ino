@@ -22,9 +22,11 @@ const float KP = 3.0;
 const float KD = 1.0;
 
 const int VITESSE = 100;
-const int VITESSE_PIVOT = 35;  // vitesse pour angle environ 90
+const int VITESSE_PIVOT = 30;  // vitesse pour angle environ 90
 const float PERIMETRE_ROUE = 6.5 * PI;
 const float DISTANCE_X = 50.0;
+
+const int DISTANCE_ARRET_OBSTACLE = 30;  // cm
 
 MeGyro gyro(0, 0x69);
 
@@ -212,6 +214,7 @@ void gererPivot1() {
   //ACTION
   float difference = gyro.getAngleZ() - angleDepart;
 
+
   //Serial.print("depart: ");
   //Serial.print(angleDepart);
   //Serial.print("  actuel: ");
@@ -231,19 +234,59 @@ void gererPivot1() {
   }
 }
 
+
 void gererSegB() {
   static bool premiereFois = true;
+  static float angleDepart = 0;
+  static float erreurPrecedente = 0;
+  static int distanceInitiale = 0;  // distance de l'obstacle au début du segment
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : SEG_B");
+
+    angleDepart = gyro.getAngleZ();
+    erreurPrecedente = 0;
+    distanceInitiale = capteurDistance.distanceCm();  // point de départ de la barre
+
+    Encoder_1.setTarPWM(-VITESSE);
+    Encoder_2.setTarPWM(VITESSE);
   }
 
   //ACTION
+  int distanceDetecte = capteurDistance.distanceCm();
 
-  bool transition = false;  // À FAIRE
+  float erreur = gyro.getAngleZ() - angleDepart;
+  float correction = KP * erreur + KD * (erreur - erreurPrecedente);
+  erreurPrecedente = erreur;
+
+  Encoder_1.setTarPWM(-VITESSE - correction);
+  Encoder_2.setTarPWM(VITESSE - correction);
+
+  // Barre de progression (protection contre la division par zéro)
+  int nbreLedAllume = 0;
+  if (distanceInitiale > DISTANCE_ARRET_OBSTACLE) {
+    nbreLedAllume = map(distanceDetecte, distanceInitiale, DISTANCE_ARRET_OBSTACLE, 0, 7);
+    nbreLedAllume = constrain(nbreLedAllume, 0, 7);
+  }
+
+  afficherProgression(nbreLedAllume);
+  led.setColor(11, 0, 20, 0);
+
+  //debeugage
+  //Serial.print("distanceDetecte : ");
+  //Serial.println(distanceDetecte);
+
+  //TRANSITION
+  bool transition = (distanceDetecte > 0 && distanceDetecte <= DISTANCE_ARRET_OBSTACLE);
 
   if (transition) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+
+    afficherProgression(0);
+
     premiereFois = true;
     etat = PIVOT_2;
   }
