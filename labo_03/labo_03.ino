@@ -323,17 +323,56 @@ void gererPivot2() {
 
 void gererSegC() {
   static bool premiereFois = true;
+  static long positionDepart = 0;
+  static float angleDepart = 0;
+  static float erreurPrecedente = 0;
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
+
+    positionDepart = Encoder_1.getCurPos();
+    angleDepart = gyro.getAngleZ();
+    erreurPrecedente = 0;
+
+    Encoder_1.setTarPWM(-VITESSE);
+    Encoder_2.setTarPWM(VITESSE);
+
     Serial.println("Etat : SEG_C");
   }
 
-  // ACTION
+  //  ACTION : calcul de la correction gyro (PD)
+  long degresParcourus = abs(Encoder_1.getCurPos() - positionDepart);
+  float distanceParcourue = (degresParcourus / 360.0) * PERIMETRE_ROUE;
+  int nbreLedAllume = 0;
 
-  bool transition = false;
+  float erreur = gyro.getAngleZ() - angleDepart;
+  float correction = KP * erreur + KD * (erreur - erreurPrecedente);
+  erreurPrecedente = erreur;
+
+  //Serial.println(correction);
+  Encoder_1.setTarPWM(-VITESSE - correction);
+  Encoder_2.setTarPWM(VITESSE - correction);
+
+  nbreLedAllume = map(distanceParcourue, 0, DISTANCE_X, 0, 7);
+  nbreLedAllume = constrain(nbreLedAllume, 0, 7);
+
+  afficherProgression(nbreLedAllume);
+
+  led.setColor(10, 0, 20, 0);
+  led.show();
+
+
+  //TRANSITION
+
+  bool transition = (distanceParcourue >= DISTANCE_X);
 
   if (transition) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+
+    afficherProgression(0);
+
     premiereFois = true;
     etat = PIVOT_3;
   }
