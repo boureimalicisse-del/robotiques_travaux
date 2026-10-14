@@ -22,7 +22,7 @@ const float KP = 3.0;
 const float KD = 1.0;
 
 const int VITESSE = 100;
-const int VITESSE_PIVOT = 30;  // vitesse pour angle environ 90
+const int VITESSE_PIVOT = 35;  // vitesse pour angle environ 90 , // 30 : manque de force
 const float PERIMETRE_ROUE = 6.5 * PI;
 const float DISTANCE_X = 50.0;
 
@@ -168,7 +168,7 @@ void gererSegA() {
   float correction = KP * erreur + KD * (erreur - erreurPrecedente);
   erreurPrecedente = erreur;
 
-  Serial.println(correction);
+  //Serial.println(correction);
   Encoder_1.setTarPWM(-VITESSE - correction);
   Encoder_2.setTarPWM(VITESSE - correction);
 
@@ -294,19 +294,30 @@ void gererSegB() {
 
 void gererPivot2() {
   static bool premiereFois = true;
+  static float angleDepart = 0;
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
+    angleDepart = gyro.getAngleZ();
+
+    Encoder_1.setTarPWM(VITESSE_PIVOT);
+    Encoder_2.setTarPWM(VITESSE_PIVOT);
     Serial.println("Etat : PIVOT_2");
   }
 
-  // ACTION
+  //ACTION
+  float difference = gyro.getAngleZ() - angleDepart;
 
-  bool transition = false;
+  //TRANSITION
+  bool transition = abs(difference) >= 90;
 
   if (transition) {
     premiereFois = true;
     etat = SEG_C;
+
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
   }
 }
 
