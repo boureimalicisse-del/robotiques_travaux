@@ -24,7 +24,7 @@ const float KD = 1.0;
 const int VITESSE = 100;
 const int VITESSE_PIVOT = 35;  // vitesse pour angle environ 90 , // 30 : manque de force
 const float PERIMETRE_ROUE = 6.5 * PI;
-const float DISTANCE_X = 50.0;
+const float DISTANCE_X = 100.0;
 
 const int DISTANCE_ARRET_OBSTACLE = 30;  // cm
 
@@ -380,21 +380,31 @@ void gererSegC() {
 
 void gererPivot3() {
   static bool premiereFois = true;
+  static float angleEntre = 0;
+  float angleParcouru = 0;
 
   // ENTRÉE
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : PIVOT_3");
+
+    angleEntre = gyro.getAngleZ();
+
+    Encoder_1.setTarPWM(VITESSE_PIVOT);
+    Encoder_2.setTarPWM(VITESSE_PIVOT);
   }
 
   // ACTION
+  angleParcouru = abs(gyro.getAngleZ() - angleEntre);
 
   // TRANSITION
-  bool transition = false;  // À FAIRE
+  bool transition = (angleParcouru >= 180);
 
   if (transition) {
     premiereFois = true;
     etat = FIN_A;
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
   }
 }
 
