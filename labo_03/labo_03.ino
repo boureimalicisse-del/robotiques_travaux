@@ -22,6 +22,7 @@ const float KP = 3.0;
 const float KD = 1.0;
 
 const int VITESSE = 100;
+const int VITESSE_PIVOT = 35;  // vitesse pour angle environ 90
 const float PERIMETRE_ROUE = 6.5 * PI;
 const float DISTANCE_X = 50.0;
 
@@ -135,7 +136,7 @@ void gererAttenteDepart() {
   }
 }
 
-// Segment A : avance de DISTANCE_X cm en ligne droite (correction gyro)
+// Segment A : avancement avec gyroscope
 void gererSegA() {
   static bool premiereFois = true;
   static long positionDepart = 0;
@@ -193,21 +194,40 @@ void gererSegA() {
   }
 }
 
+// Pivot 1 : 90 vers la gauche
 void gererPivot1() {
   static bool premiereFois = true;
+  static float angleDepart = 0;
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
+    angleDepart = gyro.getAngleZ();
+
+    Encoder_1.setTarPWM(-VITESSE_PIVOT);
+    Encoder_2.setTarPWM(-VITESSE_PIVOT);
     Serial.println("Etat : PIVOT_1");
   }
 
   //ACTION
+  float difference = gyro.getAngleZ() - angleDepart;
 
-  bool transition = false;  // A changer
+  //Serial.print("depart: ");
+  //Serial.print(angleDepart);
+  //Serial.print("  actuel: ");
+  //Serial.print(gyro.getAngleZ());
+  //Serial.print("  diff: ");
+  //Serial.println(difference);
+
+  //TRANSITION
+  bool transition = abs(difference) >= 90;
 
   if (transition) {
     premiereFois = true;
     etat = SEG_B;
+
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
   }
 }
 
