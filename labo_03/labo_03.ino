@@ -1,6 +1,6 @@
 /*
  * Boureima Ali Cissé
- * DA : 2414842  ->  DA[6] = 2 (pair)
+ * DA : 2414842 (pair)
  * Variations :
  *   - Pivot 1 : 90° vers la GAUCHE
  *   - Pivot 2 : 90° vers la DROITE (sens opposé)
@@ -22,11 +22,11 @@ const float KP = 3.0;
 const float KD = 1.0;
 
 const int VITESSE = 100;
-const int VITESSE_PIVOT = 35;  // vitesse pour angle environ 90 , // 30 : manque de force
+const int VITESSE_PIVOT = 35;  // 90° (30 : manque de force)
 const float PERIMETRE_ROUE = 6.5 * PI;
-const float DISTANCE_X = 100.0;
+const float DISTANCE_X = 50.0;
 
-const int DISTANCE_ARRET_OBSTACLE = 30;  // cm
+const int DISTANCE_ARRET_OBSTACLE = 30;
 
 MeGyro gyro(0, 0x69);
 
@@ -107,6 +107,7 @@ void loop() {
   }
 }
 
+// Affiche la barre de progression sur les DEL 1 à 7
 void afficherProgression(int nbreLed) {
   for (int i = 1; i <= 7; i++) {
     if (i <= nbreLed) {
@@ -118,18 +119,20 @@ void afficherProgression(int nbreLed) {
   led.show();
 }
 
-
+// Attente de 3 secondes avant le départ
 void gererAttenteDepart() {
   static bool premiereFois = true;
   static unsigned long tempsEntree = 0;
   const unsigned long DELAI_DEPART = 3000;
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
     tempsEntree = currentTime;
     Serial.println("Etat : ATTENTE_DEPART");
   }
 
+  //TRANSITION
   bool transition = (currentTime - tempsEntree >= DELAI_DEPART);
 
   if (transition) {
@@ -138,7 +141,7 @@ void gererAttenteDepart() {
   }
 }
 
-// Segment A : avancement avec gyroscope
+// Segment A : avance de DISTANCE_X cm en ligne droite
 void gererSegA() {
   static bool premiereFois = true;
   static long positionDepart = 0;
@@ -175,14 +178,10 @@ void gererSegA() {
   nbreLedAllume = map(distanceParcourue, 0, DISTANCE_X, 0, 7);
   nbreLedAllume = constrain(nbreLedAllume, 0, 7);
 
+  led.setColor(12, 0, 20, 0);
   afficherProgression(nbreLedAllume);
 
-  led.setColor(12, 0, 20, 0);
-  led.show();
-
-
   //TRANSITION
-
   bool transition = (distanceParcourue >= DISTANCE_X);
 
   if (transition) {
@@ -196,7 +195,7 @@ void gererSegA() {
   }
 }
 
-// Pivot 1 : 90 vers la gauche
+// Pivot 1 : 90° vers la gauche
 void gererPivot1() {
   static bool premiereFois = true;
   static float angleDepart = 0;
@@ -213,7 +212,6 @@ void gererPivot1() {
 
   //ACTION
   float difference = gyro.getAngleZ() - angleDepart;
-
 
   //Serial.print("depart: ");
   //Serial.print(angleDepart);
@@ -234,12 +232,12 @@ void gererPivot1() {
   }
 }
 
-
+// Segment B : avance jusqu'à 30 cm de l'obstacle
 void gererSegB() {
   static bool premiereFois = true;
   static float angleDepart = 0;
   static float erreurPrecedente = 0;
-  static int distanceInitiale = 0;  // distance de l'obstacle au début du segment
+  static int distanceInitiale = 0;
 
   //ENTRÉE
   if (premiereFois) {
@@ -271,10 +269,9 @@ void gererSegB() {
     nbreLedAllume = constrain(nbreLedAllume, 0, 7);
   }
 
-  afficherProgression(nbreLedAllume);
   led.setColor(11, 0, 20, 0);
+  afficherProgression(nbreLedAllume);
 
-  //debeugage
   //Serial.print("distanceDetecte : ");
   //Serial.println(distanceDetecte);
 
@@ -292,6 +289,7 @@ void gererSegB() {
   }
 }
 
+// Pivot 2 : 90° vers la droite
 void gererPivot2() {
   static bool premiereFois = true;
   static float angleDepart = 0;
@@ -321,6 +319,7 @@ void gererPivot2() {
   }
 }
 
+// Segment C : avance de DISTANCE_X cm en ligne droite
 void gererSegC() {
   static bool premiereFois = true;
   static long positionDepart = 0;
@@ -357,14 +356,10 @@ void gererSegC() {
   nbreLedAllume = map(distanceParcourue, 0, DISTANCE_X, 0, 7);
   nbreLedAllume = constrain(nbreLedAllume, 0, 7);
 
+  led.setColor(10, 0, 20, 0);
   afficherProgression(nbreLedAllume);
 
-  led.setColor(10, 0, 20, 0);
-  led.show();
-
-
   //TRANSITION
-
   bool transition = (distanceParcourue >= DISTANCE_X);
 
   if (transition) {
@@ -378,12 +373,13 @@ void gererSegC() {
   }
 }
 
+// Pivot 3 : 180°
 void gererPivot3() {
   static bool premiereFois = true;
   static float angleEntre = 0;
   float angleParcouru = 0;
 
-  // ENTRÉE
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : PIVOT_3");
@@ -394,10 +390,10 @@ void gererPivot3() {
     Encoder_2.setTarPWM(VITESSE_PIVOT);
   }
 
-  // ACTION
+  //ACTION
   angleParcouru = abs(gyro.getAngleZ() - angleEntre);
 
-  // TRANSITION
+  //TRANSITION
   bool transition = (angleParcouru >= 180);
 
   if (transition) {
@@ -408,16 +404,33 @@ void gererPivot3() {
   }
 }
 
+// Fin : DEL 8 à 12 clignotent en vert à 10 Hz
 void gererFinA() {
   static bool premiereFois = true;
+  const unsigned long DEMI_PERIODE = 50;
+  static unsigned long previousMillis = 0;
+  static bool allume = false;
 
+  //ENTRÉE
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : FIN_A");
   }
 
-  // ACTION
-  // À FAIRE : clignotement
+  //ACTION : clignotement
+  if (currentTime - previousMillis >= DEMI_PERIODE) {
+    previousMillis = currentTime;
+    allume = !allume;
 
-  // Pas de transition , état final pour l'instant
+    for (int i = 8; i <= 12; i++) {
+      if (allume) {
+        led.setColor(i, 0, 20, 0);
+      } else {
+        led.setColor(i, 0, 0, 0);
+      }
+    }
+    led.show();
+  }
+
+  // Pas de transition : état final avant bonus
 }
