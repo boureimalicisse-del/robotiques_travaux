@@ -18,7 +18,9 @@ Adafruit_seesaw ss;
 int sensorValues[NB_IR];  // Tableau pour stocker les valeurs des capteurs
 
 unsigned long currentTime = 0;
-String commande="";
+String commande = "";
+bool is_calibrated = false;
+bool cmdConnue = true;
 
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
@@ -142,10 +144,28 @@ void gererAttente() {
     premiereFois = false;
     Serial.println("Etat : ATTENTE");
   }
-  bool transition = false;  //a faire
-
-  if (transition) {
+  //transition
+  if (commande == "lab3") {
+    etat = LAB3;
+    commande = "";
     premiereFois = true;
+  } else if (commande == "cal") {
+    etat = CALIB;
+    commande = "";
+    premiereFois = true;
+  } else if (commande == "ligne" && is_calibrated) {
+    etat = SUIVRE_LIGNE;
+    commande = "";
+    premiereFois = true;
+  } else if (commande == "ligne" && !is_calibrated) {
+    etat = NON_CALIB;
+    commande = "";
+    premiereFois = true;
+  } else if (cmdConnue == false) {
+    etat = CMD_INVALIDE;
+    commande = "";
+    premiereFois = true;
+    cmdConnue = true;
   }
 }
 
@@ -164,7 +184,13 @@ void serialEvent() {
 
   commande = Serial.readStringUntil('\n');
   commande.trim();
-  
-  Serial.print ("cmd reçu : ");
-  Serial.println(commande);
+
+  if (commande != "stop" && commande != "lab3" && commande != "cal" && commande != "ligne" && commande != "") {
+    Serial.println("cmd INCONNUE");
+    cmdConnue = false;
+  } else {
+    Serial.print("cmd reçu : ");
+    Serial.println(commande);
+    cmdConnue = true;
+  }
 }
