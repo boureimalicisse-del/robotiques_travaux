@@ -17,6 +17,8 @@ MeGyro gyro(0, 0x69);
 Adafruit_seesaw ss;
 int sensorValues[NB_IR];  // Tableau pour stocker les valeurs des capteurs
 
+unsigned long currentTime = 0;
+
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
     Encoder_1.pulsePosMinus();
@@ -33,7 +35,7 @@ void isr_process_encoder2(void) {
   }
 }
 
-enum Etat{
+enum Etat {
   BOOT,
   ATTENTE,
   LAB3,
@@ -81,8 +83,77 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
+  currentTime = millis();
+
   Encoder_1.loop();
   Encoder_2.loop();
 
   gyro.update();
+
+  switch (etat) {
+    case BOOT:
+      gererBoot();
+      break;
+    case ATTENTE:
+      gererAttente();
+      break;
+    case LAB3:
+      gererLab3();
+      break;
+    case CALIB:
+      gererCalib();
+      break;
+    case SUIVRE_LIGNE:
+      gererSuivreLigne();
+      break;
+    case CMD_INVALIDE:
+      gererCmdInvalide();
+      break;
+    case NON_CALIB:
+      gererNonCalib();
+      break;
+  }
 }
+
+void gererBoot() {
+  static bool premiereFois = true;
+  const unsigned long DELAI_BOOT = 3000;
+  static unsigned long tempsEntree = 0;
+
+  if (premiereFois) {
+    premiereFois = false;
+    tempsEntree = currentTime;
+    Serial.println("Etat : BOOT");
+  }
+
+  bool transition = (currentTime - tempsEntree >= DELAI_BOOT);
+
+  if (transition) {
+    etat = ATTENTE;
+    premiereFois = true;
+  }
+}
+
+void gererAttente() {
+  static bool premiereFois = true;
+
+  if (premiereFois) {
+    premiereFois = false;
+    Serial.println("Etat : ATTENTE");
+  }
+  bool transition = false;  //a faire
+
+  if (transition) {
+    premiereFois = true;
+  }
+}
+
+void gererLab3() {}
+
+void gererCalib() {}
+
+void gererSuivreLigne() {}
+
+void gererCmdInvalide() {}
+
+void gererNonCalib() {}
