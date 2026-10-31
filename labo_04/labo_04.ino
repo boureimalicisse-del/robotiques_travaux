@@ -18,6 +18,7 @@ Adafruit_seesaw ss;
 int sensorValues[NB_IR];  // Tableau pour stocker les valeurs des capteurs
 
 unsigned long currentTime = 0;
+String commande="";
 
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
@@ -157,3 +158,13 @@ void gererSuivreLigne() {}
 void gererCmdInvalide() {}
 
 void gererNonCalib() {}
+
+void serialEvent() {
+  if (!Serial.available()) return;
+
+  commande = Serial.readStringUntil('\n');
+  commande.trim();
+  
+  Serial.print ("cmd reçu : ");
+  Serial.println(commande);
+}
