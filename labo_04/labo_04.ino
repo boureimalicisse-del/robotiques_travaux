@@ -175,7 +175,41 @@ void gererCalib() {}
 
 void gererSuivreLigne() {}
 
-void gererCmdInvalide() {}
+void gererCmdInvalide() {
+  static bool premiereFois = true;
+  static unsigned long previousMillis = 0;
+  static bool allume = false;
+  static unsigned long tempsEntree = 0;
+  const unsigned long DELAI_Etat = 3000;
+  int rate=200;
+
+  if (premiereFois) {
+    premiereFois = false;
+    tempsEntree = currentTime;
+    Serial.println("Etat : CMD_INVALIDE");
+  }
+
+  if (currentTime - previousMillis >= rate) {
+    previousMillis = currentTime;
+    allume = !allume;
+
+    if (allume) {
+      led.setColor(0, 20, 0, 0);
+    } else {
+      led.setColor(0, 0, 0, 0);
+    }
+    led.show();
+  }
+
+  bool transition = (currentTime - tempsEntree >= DELAI_Etat);
+  if (transition) {
+    premiereFois = true;
+    etat = ATTENTE;
+    led.setColor(0, 0, 0, 0);
+    led.show();
+    allume = false;
+  }
+}
 
 void gererNonCalib() {}
 
