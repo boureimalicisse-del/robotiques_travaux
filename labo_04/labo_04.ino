@@ -15,12 +15,23 @@ MeGyro gyro(0, 0x69);
 #define NB_IR 5
 
 Adafruit_seesaw ss;
-int sensorValues[NB_IR];  // Tableau pour stocker les valeurs des capteurs
+//int sensorValues[NB_IR];  // Tableau pour stocker les valeurs des capteurs
 
 unsigned long currentTime = 0;
 String commande = "";
 bool is_calibrated = false;
 bool cmdConnue = true;
+
+const int VITESSE_PIVOT = 40;
+
+struct Capteur {
+  int valeurMin = 1023;
+  int valeurMax = 0;
+  int valeurLue;
+  int valeurNormalisee;
+};
+
+Capteur capteurs[NB_IR];
 
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
@@ -171,7 +182,61 @@ void gererAttente() {
 
 void gererLab3() {}
 
-void gererCalib() {}
+void gererCalib() {
+  static bool premiereFois = true;
+  static float anglePrecedent = 0;
+  static float rotationTotale = 0;
+  const float ROTATION_CIBLE = 360;
+
+  if (premiereFois) {
+    premiereFois = false;
+    Serial.println("Etat : CALIB");
+
+    for (int i = 0; i < NB_IR; i++) {
+      capteurs[i].valeurMin = 1023;
+      capteurs[i].valeurMax = 0;
+    }
+
+    rotationTotale = 0;
+    anglePrecedent = gyro.getAngleZ();
+
+    Encoder_1.setTarPWM(-VITESSE_PIVOT);
+    Encoder_2.setTarPWM(-VITESSE_PIVOT);
+  }
+
+  calibrerCapteurs();
+
+  float angleActuel = gyro.getAngleZ();
+  float difference = angleActuel - anglePrecedent;
+  if (difference > 180) difference -= 360;
+  if (difference < -180) difference += 360;
+  rotationTotale += difference;
+  anglePrecedent = angleActuel;
+
+  bool termine = (abs(rotationTotale) >= ROTATION_CIBLE);
+  bool arret = (commande == "stop");
+
+  if (termine || arret) {
+    for (int i = 0; i < NB_IR; i++) {
+      //Serial.println(capteurs[i].valeurMin);
+      //Serial.println(capteurs[i].valeurMax);
+    }
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+    if (termine) is_calibrated = true;
+    commande = "";
+    etat = ATTENTE;
+    premiereFois = true;
+  }
+}
+
+void calibrerCapteurs() {
+  for (int i = 0; i < NB_IR; i++) {
+    int val = ss.analogRead(i);
+    if (val < capteurs[i].valeurMin) capteurs[i].valeurMin = val;
+    if (val > capteurs[i].valeurMax) capteurs[i].valeurMax = val;
+  }
+}
 
 void gererSuivreLigne() {}
 
@@ -181,7 +246,6 @@ void gererCmdInvalide() {
   static bool allume = false;
   static unsigned long tempsEntree = 0;
   const unsigned long DELAI_Etat = 3000;
-  int rate=200;
 
   if (premiereFois) {
     premiereFois = false;
@@ -189,7 +253,7 @@ void gererCmdInvalide() {
     Serial.println("Etat : CMD_INVALIDE");
   }
 
-  if (currentTime - previousMillis >= rate) {
+  if (currentTime - previousMillis >= 200) {
     previousMillis = currentTime;
     allume = !allume;
 
@@ -211,7 +275,41 @@ void gererCmdInvalide() {
   }
 }
 
-void gererNonCalib() {}
+void gererNonCalib() {
+  static bool premiereFois = true;
+  static unsigned long previousMillis = 0;
+  static bool allume = false;
+  static unsigned long tempsEntree = 0;
+  const unsigned long DELAI_Etat = 3000;
+  int rate = 200;
+
+  if (premiereFois) {
+    premiereFois = false;
+    tempsEntree = currentTime;
+    Serial.println("Etat : NON_CALIB");
+  }
+
+  if (currentTime - previousMillis >= rate) {
+    previousMillis = currentTime;
+    allume = !allume;
+
+    if (allume) {
+      led.setColor(0, 20, 20, 0);
+    } else {
+      led.setColor(0, 0, 0, 0);
+    }
+    led.show();
+  }
+
+  bool transition = (currentTime - tempsEntree >= DELAI_Etat);
+  if (transition) {
+    premiereFois = true;
+    etat = ATTENTE;
+    led.setColor(0, 0, 0, 0);
+    led.show();
+    allume = false;
+  }
+}
 
 void serialEvent() {
   if (!Serial.available()) return;
