@@ -230,15 +230,30 @@ void gererCalib() {
   }
 }
 
-void calibrerCapteurs() {
-  for (int i = 0; i < NB_IR; i++) {
-    int val = ss.analogRead(i);
-    if (val < capteurs[i].valeurMin) capteurs[i].valeurMin = val;
-    if (val > capteurs[i].valeurMax) capteurs[i].valeurMax = val;
+void gererSuivreLigne() {
+  static bool premiereFois = true;
+  static unsigned long dernierAffichage = 0;
+
+  if (premiereFois) {
+    premiereFois = false;
+    Serial.println("Etat : SUIVRE_LIGNE");
+  }
+
+  lireCapteurs();
+  normaliserValeurs();
+  float position = calculerPositionLigne();
+
+  if (currentTime - dernierAffichage >= 200) {
+    dernierAffichage = currentTime;
+    Serial.println(position);
+  }
+
+  if (commande == "stop") {
+    etat = ATTENTE;
+    commande = "";
+    premiereFois = true;
   }
 }
-
-void gererSuivreLigne() {}
 
 void gererCmdInvalide() {
   static bool premiereFois = true;
@@ -326,3 +341,46 @@ void serialEvent() {
     cmdConnue = true;
   }
 }
+
+void calibrerCapteurs() {
+  lireCapteurs();
+  for (int i = 0; i < NB_IR; i++) {
+    if (capteurs[i].valeurLue < capteurs[i].valeurMin) capteurs[i].valeurMin = capteurs[i].valeurLue;
+    if (capteurs[i].valeurLue > capteurs[i].valeurMax) capteurs[i].valeurMax = capteurs[i].valeurLue;
+  }
+}
+
+double capteurLectureNormalisee(int index) {
+  double valeur = ((capteurs[index].valeurLue - capteurs[index].valeurMin) * 1.0) / (capteurs[index].valeurMax - capteurs[index].valeurMin) * 1000.0;
+  return constrain(valeur, 0, 1000);
+}
+
+void normaliserValeurs() {
+  for (int i = 0; i < NB_IR; i++) {
+    capteurs[i].valeurNormalisee = capteurLectureNormalisee(i);
+  }
+}
+
+void lireCapteurs() {
+  for (int i = 0; i < NB_IR; i++) {
+    int val = ss.analogRead(i);
+    capteurs[i].valeurLue = val;
+  }
+}
+
+float calculerPositionLigne(){
+  float numerateur = 0;
+  float denominateur = 0;
+  float position;
+
+  for(int i=0;i<NB_IR;i++){
+    float valeur = 1000 - capteurs[i].valeurNormalisee;
+    numerateur += valeur * (i - 2);
+    denominateur += valeur;
+  }
+
+  position = numerateur / denominateur * 1000;
+  return position;
+}
+
+
