@@ -23,6 +23,10 @@ bool is_calibrated = false;
 bool cmdConnue = true;
 
 const int VITESSE_PIVOT = 40;
+const int VITESSE_LIGNE = 60;
+const float LIMITE_INTEGRALE = 1000;
+float integral = 0;
+float lastError = 0;
 
 struct Capteur {
   int valeurMin = 1023;
@@ -99,10 +103,11 @@ void loop() {
   // put your main code here, to run repeatedly:
   currentTime = millis();
 
-  Encoder_1.loop();
-  Encoder_2.loop();
-
-  gyro.update();
+  if (etat != SUIVRE_LIGNE) {
+    Encoder_1.loop();
+    Encoder_2.loop();
+    gyro.update();
+  }
 
   switch (etat) {
     case BOOT:
@@ -217,10 +222,6 @@ void gererCalib() {
   bool arret = (commande == "stop");
 
   if (termine || arret) {
-    for (int i = 0; i < NB_IR; i++) {
-      //Serial.println(capteurs[i].valeurMin);
-      //Serial.println(capteurs[i].valeurMax);
-    }
     Encoder_1.setTarPWM(0);
     Encoder_2.setTarPWM(0);
     if (termine) is_calibrated = true;
@@ -230,25 +231,99 @@ void gererCalib() {
   }
 }
 
+void lireCapteurs() {
+  for (int i = 0; i < NB_IR; i++) {
+    int val = ss.analogRead(i);
+    capteurs[i].valeurLue = val;
+  }
+}
+
+void calibrerCapteurs() {
+  lireCapteurs();
+  for (int i = 0; i < NB_IR; i++) {
+    if (capteurs[i].valeurLue < capteurs[i].valeurMin) capteurs[i].valeurMin = capteurs[i].valeurLue;
+    if (capteurs[i].valeurLue > capteurs[i].valeurMax) capteurs[i].valeurMax = capteurs[i].valeurLue;
+  }
+}
+
+double capteurLectureNormalisee(int index) {
+  double valeur = ((capteurs[index].valeurLue - capteurs[index].valeurMin) * 1.0) / (capteurs[index].valeurMax - capteurs[index].valeurMin) * 1000.0;
+  return constrain(valeur, 0, 1000);
+}
+
+void normaliserValeurs() {
+  for (int i = 0; i < NB_IR; i++) {
+    capteurs[i].valeurNormalisee = capteurLectureNormalisee(i);
+  }
+}
+
+float calculerPositionLigne() {
+  float numerateur = 0;
+  float denominateur = 0;
+  float position;
+
+  for (int i = 0; i < NB_IR; i++) {
+    float valeur = 1000 - capteurs[i].valeurNormalisee;
+    numerateur += valeur * (i - 2);
+    denominateur += valeur;
+  }
+
+  position = numerateur / denominateur * 1000;
+  return position;
+}
+
+float computePID(float position, float consigne) {
+  const float kp = 0.1;
+  const float ki = 0.01;
+  const float kd = 0.01;
+
+  float error = position - consigne;
+
+  integral += error;
+  integral = constrain(integral, -LIMITE_INTEGRALE, LIMITE_INTEGRALE);
+
+  float derivative = error - lastError;
+  lastError = error;
+
+  float output = kp * error + ki * integral + kd * derivative;
+
+  return output;
+}
+
 void gererSuivreLigne() {
   static bool premiereFois = true;
-  static unsigned long dernierAffichage = 0;
 
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : SUIVRE_LIGNE");
+    integral = 0;
+    lastError = 0;
   }
 
   lireCapteurs();
   normaliserValeurs();
   float position = calculerPositionLigne();
 
-  if (currentTime - dernierAffichage >= 200) {
-    dernierAffichage = currentTime;
-    Serial.println(position);
+  if (isnan(position)) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+    Encoder_1.setMotorPwm(0);
+    Encoder_2.setMotorPwm(0);
+  } else {
+    float correction = computePID(position, 0.0);
+
+    int vitesseDroite = constrain(-VITESSE_LIGNE + correction, -255, 255);
+    int vitesseGauche = constrain(VITESSE_LIGNE + correction, -255, 255);
+
+    Encoder_1.setMotorPwm(vitesseDroite);
+    Encoder_2.setMotorPwm(vitesseGauche);
   }
 
   if (commande == "stop") {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+    Encoder_1.setMotorPwm(0);
+    Encoder_2.setMotorPwm(0);
     etat = ATTENTE;
     commande = "";
     premiereFois = true;
@@ -341,46 +416,3 @@ void serialEvent() {
     cmdConnue = true;
   }
 }
-
-void calibrerCapteurs() {
-  lireCapteurs();
-  for (int i = 0; i < NB_IR; i++) {
-    if (capteurs[i].valeurLue < capteurs[i].valeurMin) capteurs[i].valeurMin = capteurs[i].valeurLue;
-    if (capteurs[i].valeurLue > capteurs[i].valeurMax) capteurs[i].valeurMax = capteurs[i].valeurLue;
-  }
-}
-
-double capteurLectureNormalisee(int index) {
-  double valeur = ((capteurs[index].valeurLue - capteurs[index].valeurMin) * 1.0) / (capteurs[index].valeurMax - capteurs[index].valeurMin) * 1000.0;
-  return constrain(valeur, 0, 1000);
-}
-
-void normaliserValeurs() {
-  for (int i = 0; i < NB_IR; i++) {
-    capteurs[i].valeurNormalisee = capteurLectureNormalisee(i);
-  }
-}
-
-void lireCapteurs() {
-  for (int i = 0; i < NB_IR; i++) {
-    int val = ss.analogRead(i);
-    capteurs[i].valeurLue = val;
-  }
-}
-
-float calculerPositionLigne(){
-  float numerateur = 0;
-  float denominateur = 0;
-  float position;
-
-  for(int i=0;i<NB_IR;i++){
-    float valeur = 1000 - capteurs[i].valeurNormalisee;
-    numerateur += valeur * (i - 2);
-    denominateur += valeur;
-  }
-
-  position = numerateur / denominateur * 1000;
-  return position;
-}
-
-
