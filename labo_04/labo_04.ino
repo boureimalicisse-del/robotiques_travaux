@@ -23,8 +23,14 @@ bool is_calibrated = false;
 bool cmdConnue = true;
 
 const int VITESSE_PIVOT = 40;
+const int VITESSE_PIVOT_LIGNE = 60;
 const int VITESSE_LIGNE = 60;
 const float LIMITE_INTEGRALE = 1000;
+const int SEUIL_LIGNE = 500;
+const int SEUIL_BARRE = 500;
+const float CONSIGNE_LIGNE = 0.0;
+const unsigned long DELAI_FIN_LIGNE = 300;
+const float ANGLE_PIVOT_LIGNE = 166.0;
 float integral = 0;
 float lastError = 0;
 
@@ -37,7 +43,7 @@ struct Capteur {
 
 Capteur capteurs[NB_IR];
 
-//variables labos 3---------------------------------------------------------------------------------------------------------------------------------------
+//variables labos 3
 const float KP_LAB3 = 4.0;
 const float KI_LAB3 = 1.0;
 const float KD_LAB3 = 2.0;
@@ -277,9 +283,11 @@ void gererCalib() {
   static float anglePrecedent = 0;
   static float rotationTotale = 0;
   const float ROTATION_CIBLE = 360;
+  const float COMPENSATION_INERTIE = 20;
 
   if (premiereFois) {
     premiereFois = false;
+    is_calibrated = false;
     Serial.println("Etat : CALIB");
 
     for (int i = 0; i < NB_IR; i++) {
@@ -290,8 +298,8 @@ void gererCalib() {
     rotationTotale = 0;
     anglePrecedent = gyro.getAngleZ();
 
-    Encoder_1.setTarPWM(-VITESSE_PIVOT);
-    Encoder_2.setTarPWM(-VITESSE_PIVOT);
+    Encoder_1.setTarPWM(-VITESSE_PIVOT_LIGNE);
+    Encoder_2.setTarPWM(-VITESSE_PIVOT_LIGNE);
   }
 
   calibrerCapteurs();
@@ -303,7 +311,7 @@ void gererCalib() {
   rotationTotale += difference;
   anglePrecedent = angleActuel;
 
-  bool termine = (abs(rotationTotale) >= ROTATION_CIBLE);
+  bool termine = (abs(rotationTotale) >= ROTATION_CIBLE - COMPENSATION_INERTIE);
   bool arret = (commande == "stop");
 
   if (termine || arret) {
@@ -377,31 +385,93 @@ float computePID(float position, float consigne) {
 
 void gererSuivreLigne() {
   static bool premiereFois = true;
+  static bool enArret = false;
+  static bool enPivot = false;
+  static bool finDetectable = false;
+  static bool ligneDisparue = false;
+  static unsigned long tempsDisparition = 0;
+  static unsigned long tempsArret = 0;
+  static float angleDepartPivot = 0;
+  static float derniereCorrection = 0;
 
   if (premiereFois) {
     premiereFois = false;
     Serial.println("Etat : SUIVRE_LIGNE");
     integral = 0;
     lastError = 0;
+    enArret = false;
+    enPivot = false;
+    finDetectable = false;
+    ligneDisparue = false;
+    derniereCorrection = 0;
   }
 
-  lireCapteurs();
-  normaliserValeurs();
-  float position = calculerPositionLigne();
+  if (enArret) {
+    Encoder_1.loop();
+    Encoder_2.loop();
+    gyro.update();
 
-  if (isnan(position)) {
-    Encoder_1.setTarPWM(0);
-    Encoder_2.setTarPWM(0);
-    Encoder_1.setMotorPwm(0);
-    Encoder_2.setMotorPwm(0);
+    if (currentTime - tempsArret >= DELAI_STABILISATION) {
+      angleDepartPivot = gyro.getAngleZ();
+      enArret = false;
+      enPivot = true;
+      Encoder_1.setTarPWM(-VITESSE_PIVOT_LIGNE);
+      Encoder_2.setTarPWM(-VITESSE_PIVOT_LIGNE);
+    }
+  } else if (enPivot) {
+    Encoder_1.loop();
+    Encoder_2.loop();
+    gyro.update();
+
+    float angleParcouru = abs(differenceAngle(gyro.getAngleZ(), angleDepartPivot));
+
+    if (angleParcouru >= ANGLE_PIVOT_LIGNE) {
+      Encoder_1.setTarPWM(0);
+      Encoder_2.setTarPWM(0);
+      Encoder_1.setMotorPwm(0);
+      Encoder_2.setMotorPwm(0);
+      integral = 0;
+      lastError = 0;
+      derniereCorrection = 0;
+      ligneDisparue = false;
+      finDetectable = false;
+      enPivot = false;
+    }
   } else {
-    float correction = computePID(position, 0.0);
+    lireCapteurs();
+    normaliserValeurs();
 
-    int vitesseDroite = constrain(-VITESSE_LIGNE + correction, -255, 255);
-    int vitesseGauche = constrain(VITESSE_LIGNE + correction, -255, 255);
+    int plusSombre = 1000;
+    int plusClair = 0;
+    for (int i = 0; i < NB_IR; i++) {
+      if (capteurs[i].valeurNormalisee < plusSombre) plusSombre = capteurs[i].valeurNormalisee;
+      if (capteurs[i].valeurNormalisee > plusClair) plusClair = capteurs[i].valeurNormalisee;
+    }
+
+    bool ligneVisible = (plusSombre < SEUIL_LIGNE);
+    bool barreDetectee = (plusClair < SEUIL_BARRE);
+
+    if (ligneVisible) {
+      if (!barreDetectee) finDetectable = true;
+      ligneDisparue = false;
+      derniereCorrection = computePID(calculerPositionLigne(), CONSIGNE_LIGNE);
+    } else if (!ligneDisparue) {
+      ligneDisparue = true;
+      tempsDisparition = currentTime;
+    }
+
+    int vitesseDroite = constrain(-VITESSE_LIGNE + derniereCorrection, -255, 255);
+    int vitesseGauche = constrain(VITESSE_LIGNE + derniereCorrection, -255, 255);
 
     Encoder_1.setMotorPwm(vitesseDroite);
     Encoder_2.setMotorPwm(vitesseGauche);
+
+    if (finDetectable && (barreDetectee || (ligneDisparue && currentTime - tempsDisparition >= DELAI_FIN_LIGNE))) {
+      enArret = true;
+      tempsArret = currentTime;
+      Encoder_1.setTarPWM(0);
+      Encoder_2.setTarPWM(0);
+    }
   }
 
   if (commande == "stop") {
@@ -511,7 +581,7 @@ void serialEvent() {
   }
 }
 
-//Fonctions labo03---------------------------------------------------------------------------------------------------------------------------------------------------------
+//Fonctions labo03
 
 float differenceAngle(float angleActuel, float angleReference) {
   float difference = angleActuel - angleReference;
@@ -838,7 +908,7 @@ void gererPivot3() {
   }
 }
 
-// Fin A : DEL 8 à 12 clignotent en vert à 10 Hz (état final)
+// Fin A : DEL 8 à 12 clignotent en vert à 10 Hz 
 void gererFinA() {
   static unsigned long tempsEntree = 0;
   static unsigned long previousMillis = 0;
