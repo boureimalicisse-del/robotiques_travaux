@@ -45,6 +45,10 @@ Capteur capteurs[NB_IR];
 
 MeUltrasonicSensor capteurDistance(PORT_10);
 
+//CONSTANTE VITESSE
+const int VITESSE_MIN = 50;
+int vitesseCroisiere = VITESSE_LIGNE;
+
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
     Encoder_1.pulsePosMinus();
@@ -480,12 +484,20 @@ void commandeKlaxon() {
 }
 
 void commandeLumiereAnneau(int r, int g, int b) {
+  led.setColor(0, constrain(r, 0, 255), constrain(g, 0, 255), constrain(b, 0, 255));
+  led.show();
 }
 
 void commandeLumiereDel(int i, int r, int g, int b) {
+  if (i < 1 || i > LEDNUM) return;
+  led.setColor(i, constrain(r, 0, 255), constrain(g, 0, 255), constrain(b, 0, 255));
+  led.show();
 }
 
 void commandeVitesse(int pwm) {
+  vitesseCroisiere = constrain(pwm, VITESSE_MIN, 255);
+  Serial.print("Vitesse : ");
+  Serial.println(vitesseCroisiere);
 }
 
 void commandeCalibration() {
@@ -511,7 +523,7 @@ int compterChamps(const String& ligne) {
   return nb;
 }
 
-String extraireChamp(const String& ligne, int index) {
+String extraireChamp(const String& ligne, int index) { //index : le numero du champs voulu
   int debut = 0;
   for (int i = 0; i < index; i++) {
     debut = ligne.indexOf(',', debut) + 1;
