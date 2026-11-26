@@ -49,6 +49,12 @@ MeUltrasonicSensor capteurDistance(PORT_10);
 const int VITESSE_MIN = 50;
 int vitesseCroisiere = VITESSE_LIGNE;
 
+//buzzer
+#define BUZZERPIN 45
+MeBuzzer buzzer;
+const int FREQUENCE_KLAXON = 1000;
+const unsigned long DUREE_KLAXON = 200;
+
 void isr_process_encoder1(void) {
   if (digitalRead(Encoder_1.getPortB()) == 0) {
     Encoder_1.pulsePosMinus();
@@ -108,6 +114,7 @@ void setup() {
 
   Serial.begin(115200);
   led.setpin(LEDPIN);
+  buzzer.setpin(BUZZERPIN);
 
   if (!ss.begin()) {
     Serial.println("Erreur de connexion au LyneTracker");
@@ -481,6 +488,7 @@ void commandeDeplacement(char direction) {
 }
 
 void commandeKlaxon() {
+  buzzer.tone(FREQUENCE_KLAXON, DUREE_KLAXON);
 }
 
 void commandeLumiereAnneau(int r, int g, int b) {
