@@ -425,21 +425,15 @@ void gererSuivreLigne() {
 void serialEvent() {
   if (!Serial.available()) return;
 
-  commande = Serial.readStringUntil('\n');
-  commande.trim();
+  String ligne = Serial.readStringUntil('\n');
+  ligne.trim();
 
-  if (commande.length() >= 3 && (uint8_t)commande[0] == 0xFF && (uint8_t)commande[1] == 0x55) {
-    commande.remove(0, 2);
-    commande.remove(commande.length() - 1);
+  if (ligne.length() >= 3 && (uint8_t)ligne[0] == 0xFF && (uint8_t)ligne[1] == 0x55) {
+    ligne.remove(0, 2);
+    ligne.remove(ligne.length() - 1);
   }
 
-  if (commande != "stop" && commande != "cal" && commande != "ligne" && commande != "") {
-    Serial.println("cmd INCONNUE");
-    commande = "";
-  } else {
-    Serial.print("cmd reçu : ");
-    Serial.println(commande);
-  }
+  traiterCommande(ligne);
 }
 
 //Fonctions labo03
@@ -495,12 +489,15 @@ void commandeVitesse(int pwm) {
 }
 
 void commandeCalibration() {
+  commande = "cal";
 }
 
 void commandeGo() {
+  commande = "ligne";
 }
 
 void commandeStop() {
+  commande = "stop";
 }
 
 void commandeManuel() {
@@ -523,4 +520,43 @@ String extraireChamp(const String& ligne, int index) {
   int fin = ligne.indexOf(',', debut);
   if (fin == -1) fin = ligne.length();
   return ligne.substring(debut, fin);
+}
+
+void traiterCommande(String ligne) {
+  if (ligne == "") return;
+
+  String nom = extraireChamp(ligne, 0);
+  int nbChamps = compterChamps(ligne);
+  bool reconnue = true;
+
+  if (nbChamps == 1 && (nom == "W" || nom == "A" || nom == "S" || nom == "D" || nom == "T")) {
+    commandeDeplacement(nom[0]);
+  } else if (nbChamps == 1 && nom == "E") {
+    commandeKlaxon();
+  } else if (nbChamps == 4 && nom == "l") {
+    commandeLumiereAnneau(extraireChamp(ligne, 1).toInt(), extraireChamp(ligne, 2).toInt(), extraireChamp(ligne, 3).toInt());
+  } else if (nbChamps == 5 && nom == "l") {
+    commandeLumiereDel(extraireChamp(ligne, 1).toInt(), extraireChamp(ligne, 2).toInt(), extraireChamp(ligne, 3).toInt(), extraireChamp(ligne, 4).toInt());
+  } else if (nbChamps == 2 && nom == "p") {
+    commandeVitesse(extraireChamp(ligne, 1).toInt());
+  } else if (nbChamps == 1 && nom == "C") {
+    commandeCalibration();
+  } else if (nbChamps == 1 && nom == "GO") {
+    commandeGo();
+  } else if (nbChamps == 1 && nom == "STOP") {
+    commandeStop();
+  } else if (nbChamps == 1 && nom == "MAN") {
+    commandeManuel();
+  } else if (nbChamps == 1 && (nom == "cal" || nom == "ligne" || nom == "stop")) {
+    commande = nom;
+  } else {
+    reconnue = false;
+  }
+
+  if (reconnue) {
+    Serial.print("j'ai exécuté ");
+    Serial.println(ligne);
+  } else {
+    Serial.println("cmd INCONNUE");
+  }
 }
