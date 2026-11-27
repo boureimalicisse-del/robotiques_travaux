@@ -2,6 +2,15 @@
 
 #include <Adafruit_seesaw.h>
 
+#include <ArduinoJson.h>
+const unsigned long DUREE_TELEMETRIE = 1000;
+
+//unsigned long currentTime = 0;
+unsigned long dernierEnvoiTelemetrie = 0;
+const int AUCUN_CHECKPOINT = 0;
+unsigned long chronoMission = 0;
+int etatPrecedent = -1;
+
 #define LEDNUM 12
 #define LEDPIN 44
 
@@ -127,6 +136,16 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   currentTime = millis();
+
+  if (currentTime - dernierEnvoiTelemetrie >= DUREE_TELEMETRIE) {
+    dernierEnvoiTelemetrie = currentTime;
+    envoyerTelemetrie(true, false, AUCUN_CHECKPOINT);
+  }
+
+  if ((int)etat != etatPrecedent) {
+    etatPrecedent = (int)etat;
+    envoyerTelemetrie(false, true, AUCUN_CHECKPOINT);
+  }
 
   if (etat != SUIVRE_LIGNE) {
     Encoder_1.loop();
@@ -579,4 +598,36 @@ void traiterCommande(String ligne) {
   } else {
     Serial.println("cmd INCONNUE");
   }
+}
+
+void envoyerTelemetrie(bool periodique, bool avecEtat, int cp) {
+  StaticJsonDocument<256> doc;
+
+  doc["ts"] = currentTime;
+  doc["chrono"] = chronoMission;
+
+  if (avecEtat) {
+    doc["etat"] = (int)etat;
+  }
+
+  if (cp != AUCUN_CHECKPOINT) {
+    doc["cp"] = cp;
+  }
+
+  if (periodique) {
+    if (etat == SUIVRE_LIGNE) gyro.update();
+    doc["gz"] = gyro.getGyroZ();
+
+    JsonObject pwm = doc.createNestedObject("pwm");
+    pwm["l"] = Encoder_2.getCurPwm();
+    pwm["r"] = -Encoder_1.getCurPwm();
+
+    JsonArray capt = doc.createNestedArray("capt");
+    for (int i = 0; i < NB_IR; i++) {
+      capt.add(capteurs[i].valeurNormalisee);
+    }
+  }
+
+  serializeJson(doc, Serial);
+  Serial.println();
 }
