@@ -43,6 +43,11 @@ const unsigned long DELAI_STABILISATION = 300;
 float integral = 0;
 float lastError = 0;
 
+//variables fonction tourner 
+const int VITESSE_PIVOT = 60;
+const float COMPENSATION_INERTIE = 10.0;   // valeur de départ, à régler par test
+const unsigned long DUREE_MAX_PIVOT = 5000;
+
 struct Capteur {
   int valeurMin = 1023;
   int valeurMax = 0;
@@ -53,6 +58,7 @@ struct Capteur {
 Capteur capteurs[NB_IR];
 
 MeUltrasonicSensor capteurDistance(PORT_10);
+float distanceActuelle = 0;
 
 //CONSTANTE VITESSE
 const int VITESSE_MIN = 50;
@@ -136,6 +142,7 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   currentTime = millis();
+  lireDistance();
 
   if (currentTime - dernierEnvoiTelemetrie >= DUREE_TELEMETRIE) {
     dernierEnvoiTelemetrie = currentTime;
@@ -373,7 +380,7 @@ void gererDemiTour() {
 //suivre la ligne
 void gererSuivreLigne() {
   static bool premiereFois = true;
-  static bool finDetectable = false;///empêche le robot de déclarer une fin de ligne tant qu’il n’a pas d’abord retrouvé la ligne
+  static bool finDetectable = false;  ///empêche le robot de déclarer une fin de ligne tant qu’il n’a pas d’abord retrouvé la ligne
   static bool ligneDisparue = false;
   static bool barreEnCours = false;
   static unsigned long tempsDisparition = 0;
@@ -550,7 +557,7 @@ int compterChamps(const String& ligne) {
   return nb;
 }
 
-String extraireChamp(const String& ligne, int index) { //index : le numero du champs voulu
+String extraireChamp(const String& ligne, int index) {  //index : le numero du champs voulu
   int debut = 0;
   for (int i = 0; i < index; i++) {
     debut = ligne.indexOf(',', debut) + 1;
@@ -630,4 +637,52 @@ void envoyerTelemetrie(bool periodique, bool avecEtat, int cp) {
 
   serializeJson(doc, Serial);
   Serial.println();
+}
+
+void lireDistance() {
+  static unsigned long lastTime = 0;
+  const unsigned long rate = 100;
+
+  if (currentTime - lastTime >= rate) {
+    lastTime = currentTime;
+    distanceActuelle = capteurDistance.distanceCm();
+  }
+}
+
+bool pivoter(float angle) {
+  static bool enCours = false;
+  static float dernierAngle = 0;
+  static float angleParcouru = 0;
+  static unsigned long debutPivot = 0;
+
+  float angleActuel = gyro.getAngleZ();
+
+  if (!enCours) {
+    enCours = true;
+    dernierAngle = angleActuel;
+    angleParcouru = 0;
+    debutPivot = currentTime;
+
+    int sens = (angle >= 0) ? 1 : -1;
+    Encoder_1.setTarPWM(sens * VITESSE_PIVOT);
+    Encoder_2.setTarPWM(sens * VITESSE_PIVOT);
+    return false;
+  }
+
+  float difference = angleActuel - dernierAngle;
+  if (difference > 180) difference -= 360;
+  if (difference < -180) difference += 360;
+  angleParcouru += difference;
+  dernierAngle = angleActuel;
+
+  bool angleAtteint = fabs(angleParcouru) >= fabs(angle) - COMPENSATION_INERTIE;
+  bool tempsEcoule = currentTime - debutPivot >= DUREE_MAX_PIVOT;
+
+  if (angleAtteint || tempsEcoule) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+    enCours = false;
+    return true;
+  }
+  return false;
 }
