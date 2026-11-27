@@ -70,6 +70,9 @@ float distanceActuelle = 0;
 const int VITESSE_MIN = 50;
 int vitesseCroisiere = VITESSE_LIGNE;
 
+//variables virage
+const int CHECKPOINT_C = 3;
+
 //buzzer
 #define BUZZERPIN 45
 MeBuzzer buzzer;
@@ -508,10 +511,27 @@ void gererRechercheLigne() {
 }
 
 void gererVirage() {
-  if (commande == "stop") {
+  static bool premiereFois = true;
+  static int x = 0;  // nombre de T déjà rencontrés
+
+  //ENTRÉE
+  if (premiereFois) {
+    premiereFois = false;
+    Serial.println("Etat : VIRAGE");
+    envoyerTelemetrie(false, false, CHECKPOINT_C + x);
+    x++;
+  }
+
+  //TRANSITION
+  bool arret = (commande == "stop");
+
+  if (arret) {
     etat = ATTENTE;
     commande = "";
+  } else {
+    etat = SUIVRE_LIGNE;
   }
+  premiereFois = true;
 }
 
 void gererApprocheColis() {
