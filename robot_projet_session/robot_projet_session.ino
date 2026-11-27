@@ -47,6 +47,12 @@ float lastError = 0;
 const int VITESSE_PIVOT = 60;
 const float COMPENSATION_INERTIE = 10.0;   // valeur de départ, à régler par test
 const unsigned long DUREE_MAX_PIVOT = 5000;
+bool pivotEnCours = false;
+
+//variables verification
+const float DISTANCE_BLOQUE = 30.0;
+const float ANGLE_PREMIER_COTE = 90.0;  // positif = droite (numéro d'étudiant pair)
+const unsigned long DELAI_MESURE_VERIFICATION = 400;
 
 struct Capteur {
   int valeurMin = 1023;
@@ -104,6 +110,13 @@ enum Etat {
 
 Etat etat = ATTENTE;
 
+enum EtapeVerification {
+  PIVOT_PREMIER_COTE,
+  MESURE_PREMIER_COTE,
+  PIVOT_SECOND_COTE,
+  MESURE_SECOND_COTE
+};
+
 void setup() {
   // put your setup code here, to run once:
   attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
@@ -142,7 +155,9 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   currentTime = millis();
-  lireDistance();
+  if (etat != SUIVRE_LIGNE) {
+    lireDistance();
+  }
 
   if (currentTime - dernierEnvoiTelemetrie >= DUREE_TELEMETRIE) {
     dernierEnvoiTelemetrie = currentTime;
@@ -451,9 +466,13 @@ void gererSuivreLigne() {
   } else if (finDeLigne) {
     Encoder_1.setTarPWM(0);
     Encoder_2.setTarPWM(0);
-    if (barreConfirmee) Serial.println("Fin de ligne : barre");
-    else Serial.println("Fin de ligne : perte");
-    etat = DEMI_TOUR;
+    if (barreConfirmee) {
+      Serial.println("Fin de ligne : barre");
+      etat = VERIFICATION;
+    } else {
+      Serial.println("Fin de ligne : perte");
+      etat = DEMI_TOUR;
+    }
     premiereFois = true;
   }
 }
@@ -489,6 +508,10 @@ void gererRechercheLigne() {
 }
 
 void gererVirage() {
+  if (commande == "stop") {
+    etat = ATTENTE;
+    commande = "";
+  }
 }
 
 void gererApprocheColis() {
@@ -498,9 +521,77 @@ void gererAttentif() {
 }
 
 void gererVerification() {
+  static bool premiereFois = true;
+  static EtapeVerification etape = PIVOT_PREMIER_COTE;
+  static unsigned long debutMesure = 0;
+
+  //ENTRÉE
+  if (premiereFois) {
+    premiereFois = false;
+    etape = PIVOT_PREMIER_COTE;
+    Serial.println("Etat : VERIFICATION");
+  }
+
+  //ACTION
+  Etat prochainEtat = VERIFICATION;
+
+  switch (etape) {
+    case PIVOT_PREMIER_COTE:
+      if (pivoter(ANGLE_PREMIER_COTE)) {
+        debutMesure = currentTime;
+        etape = MESURE_PREMIER_COTE;
+      }
+      break;
+    case MESURE_PREMIER_COTE:
+      if (currentTime - debutMesure >= DELAI_MESURE_VERIFICATION) {
+        if (distanceActuelle >= DISTANCE_BLOQUE) {
+          Serial.println("Premier côté libre");
+          prochainEtat = VIRAGE;
+        } else {
+          etape = PIVOT_SECOND_COTE;
+        }
+      }
+      break;
+    case PIVOT_SECOND_COTE:
+      if (pivoter(2 * ANGLE_PREMIER_COTE)) {
+        debutMesure = currentTime;
+        etape = MESURE_SECOND_COTE;
+      }
+      break;
+    case MESURE_SECOND_COTE:
+      if (currentTime - debutMesure >= DELAI_MESURE_VERIFICATION) {
+        if (distanceActuelle >= DISTANCE_BLOQUE) {
+          Serial.println("Second côté libre");
+          prochainEtat = VIRAGE;
+        } else {
+          Serial.println("T sans issue");
+          prochainEtat = STATIONNEMENT;
+        }
+      }
+      break;
+  }
+
+  //TRANSITION
+  bool arret = (commande == "stop");
+
+  if (arret) {
+    Encoder_1.setTarPWM(0);
+    Encoder_2.setTarPWM(0);
+    pivotEnCours = false;
+    etat = ATTENTE;
+    commande = "";
+    premiereFois = true;
+  } else if (prochainEtat != VERIFICATION) {
+    etat = prochainEtat;
+    premiereFois = true;
+  }
 }
 
 void gererStationnement() {
+  if (commande == "stop") {
+    etat = ATTENTE;
+    commande = "";
+  }
 }
 
 void gererManuel() {
@@ -650,15 +741,14 @@ void lireDistance() {
 }
 
 bool pivoter(float angle) {
-  static bool enCours = false;
   static float dernierAngle = 0;
   static float angleParcouru = 0;
   static unsigned long debutPivot = 0;
 
   float angleActuel = gyro.getAngleZ();
 
-  if (!enCours) {
-    enCours = true;
+  if (!pivotEnCours) {
+    pivotEnCours = true;
     dernierAngle = angleActuel;
     angleParcouru = 0;
     debutPivot = currentTime;
@@ -681,7 +771,7 @@ bool pivoter(float angle) {
   if (angleAtteint || tempsEcoule) {
     Encoder_1.setTarPWM(0);
     Encoder_2.setTarPWM(0);
-    enCours = false;
+    pivotEnCours = false;
     return true;
   }
   return false;
